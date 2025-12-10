@@ -1,19 +1,18 @@
 """
-Generate multiple responses (grounded and hallucinated) for queries using Wikipedia RAG.
+Generate multiple responses (grounded and hallucinated) for queries using research paper RAG.
 """
 
 import os
-import sys
-from typing import Dict, List, Optional
+from typing import Dict
 from datetime import datetime
 from dotenv import load_dotenv
 from openai import OpenAI
 
 # Handle imports for both direct execution and module import
 try:
-    from retriever_wiki import search_wikipedia, build_retrieved_context
+    from retriever import search_papers, build_retrieved_context
 except ModuleNotFoundError:
-    from src.retriever_wiki import search_wikipedia, build_retrieved_context
+    from src.retriever import search_papers, build_retrieved_context
 
 
 # Get project root directory (parent of src/)
@@ -52,23 +51,22 @@ def generate_response(
     verbose: bool = False
 ) -> Dict:
     """
-    Generate a response for a user query using RAG with Wikipedia chunks.
+    Generate a response for a user query using RAG with research paper chunks.
     
     Args:
-        user_query (str): The user's question
-        prompt_template (str): The system prompt template to use
-        prompt_id (str): Identifier for the prompt (for logging/tracking)
-        temperature (float): Model temperature (0.0 to 2.0)
-        model (str): OpenAI model to use
-        k (int): Number of chunks to retrieve
-        similarity_threshold (float): Minimum similarity score for retrieval
-        index_dir (str): Directory containing the FAISS index
-        verbose (bool): Whether to print detailed output
+        user_query: The user's question
+        prompt_template: The system prompt template to use
+        prompt_id: Identifier for the prompt (for logging/tracking)
+        temperature: Model temperature (0.0 to 2.0)
+        model: OpenAI model to use
+        k: Number of chunks to retrieve
+        similarity_threshold: Minimum similarity score for retrieval
+        index_dir: Directory containing the FAISS index
+        verbose: Whether to print detailed output
         
     Returns:
-        Dict: Response with metadata (including: response, user_query, prompt_id, temperature, model, retrieved_chunks, timestamp, error)
+        Dict: Response with metadata
     """
-    # Use default index directory if not specified
     if index_dir is None:
         index_dir = DEFAULT_INDEX_DIR
     
@@ -76,8 +74,8 @@ def generate_response(
         print(f"Generating response for: '{user_query}'")
         print(f"Using prompt_id: {prompt_id}, temperature: {temperature}")
     
-    # Step 1: Retrieve relevant chunks
-    retrieved_chunks = search_wikipedia(
+    # Step 1: Retrieve relevant chunks from research papers
+    retrieved_chunks = search_papers(
         query=user_query,
         k=k,
         similarity_threshold=similarity_threshold,
@@ -88,7 +86,6 @@ def generate_response(
     if not retrieved_chunks:
         if verbose:
             print("Warning: No relevant chunks found for the query")
-        # Return response indicating no context was found
         return {
             "response": None,
             "user_query": user_query,
@@ -116,19 +113,20 @@ def generate_response(
                 {"role": "system", "content": prompt_template},
                 {"role": "user", "content": context}
             ],
-            temperature=temperature
+            temperature=temperature,
+            max_tokens=1000
         )
         
         generated_text = response.choices[0].message.content
         
-        # Extract chunk metadata for logging (without full content to save space)
+        # Extract chunk metadata for logging
         chunk_metadata = [
             {
                 "chunk_id": chunk.get("chunk_id"),
-                "article_title": chunk.get("article_title"),
-                "topic": chunk.get("topic"),
-                "similarity_score": chunk.get("similarity_score"),
-                "url": chunk.get("url")
+                "paper_title": chunk.get("paper_title"),
+                "authors": chunk.get("authors"),
+                "year": chunk.get("year"),
+                "similarity_score": chunk.get("similarity_score")
             }
             for chunk in retrieved_chunks
         ]
@@ -162,7 +160,6 @@ def generate_response(
             "timestamp": datetime.now().isoformat(),
             "error": str(e)
         }
-        
 
 
 if __name__ == "__main__":
@@ -171,39 +168,24 @@ if __name__ == "__main__":
     print("RAG GENERATOR - TEST RUN")
     print("=" * 60)
     
-    # Example prompt template
-    test_prompt = """You are a helpful assistant that answers questions based on the provided Wikipedia context.
-Your answers should be accurate and grounded in the retrieved information."""
+    test_prompt = """Answer the user's question. You maybe use the provided context below if relevant."""
     
-    # Test query
-    test_query = "What is the DSI at Columbia University?"
-    
-    print(f"\nTest query: {test_query}")
-    print(f"Prompt ID: test_grounded")
-    print(f"Temperature: 0.3")
-    
+    #test_query = "What N does the topological defects in glasses paper use in their simulations?"
+    test_query = "What is the DSI at Columbia?"
+
     result = generate_response(
         user_query=test_query,
         prompt_template=test_prompt,
-        prompt_id="test_grounded",
-        temperature=0.3,
-        verbose=True
+        prompt_id="test",
+        temperature=1.5,
+        verbose=True,
+        model="gpt-3.5-turbo"
     )
     
-    print("\n" + "=" * 60)
-    print("RESULT")
-    print("=" * 60)
+    print(f"\nTest query: {test_query}")
     
     if result.get("response"):
         print(f"\nResponse:\n{result['response']}")
-        print(f"\nMetadata:")
-        print(f"  - Model: {result['model']}")
-        print(f"  - Temperature: {result['temperature']}")
-        print(f"  - Prompt ID: {result['prompt_id']}")
-        print(f"  - Chunks used: {result['num_chunks_used']}")
-        print(f"  - Timestamp: {result['timestamp']}")
-        print(f"\nSource articles:")
-        for chunk in result['retrieved_chunks']:
-            print(f"  - {chunk['article_title']} (score: {chunk['similarity_score']:.3f})")
+
     else:
         print(f"Error: {result.get('error', 'Unknown error')}")
