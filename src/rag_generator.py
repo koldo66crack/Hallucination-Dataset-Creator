@@ -3,16 +3,17 @@ Generate multiple responses (grounded and hallucinated) for queries using resear
 """
 
 import os
-from typing import Dict
+from typing import Dict, List, Tuple
 from datetime import datetime
 from dotenv import load_dotenv
-from openai import OpenAI
 
 # Handle imports for both direct execution and module import
 try:
     from retriever import search_papers, build_retrieved_context
+    from llm_client import LLMClient
 except ModuleNotFoundError:
     from src.retriever import search_papers, build_retrieved_context
+    from src.llm_client import LLMClient
 
 
 # Get project root directory (parent of src/)
@@ -23,58 +24,32 @@ DEFAULT_INDEX_DIR = os.path.join(PROJECT_ROOT, "data", "processed")
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
 
-def get_openai_client() -> OpenAI:
-    """
-    Initialize and return OpenAI client.
-    
-    Returns:
-        OpenAI: Configured OpenAI client
-        
-    Raises:
-        ValueError: If OPENAI_API_KEY is not set
-    """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY not found in environment variables. Please set it in .env file.")
-    return OpenAI(api_key=api_key)
-
-
-def generate_response(
+def retrieve_context(
     user_query: str,
-    prompt_template: str,
-    prompt_id: str,
-    temperature: float = 0.7,
-    model: str = "gpt-4o-mini",
     k: int = 5,
     similarity_threshold: float = 0.5,
     index_dir: str = None,
     verbose: bool = False
-) -> Dict:
+) -> Tuple[List[Dict], str]:
     """
-    Generate a response for a user query using RAG with research paper chunks.
+    Retrieve chunks and build context - call ONCE per query.
     
     Args:
         user_query: The user's question
-        prompt_template: The system prompt template to use
-        prompt_id: Identifier for the prompt (for logging/tracking)
-        temperature: Model temperature (0.0 to 2.0)
-        model: OpenAI model to use
         k: Number of chunks to retrieve
         similarity_threshold: Minimum similarity score for retrieval
         index_dir: Directory containing the FAISS index
         verbose: Whether to print detailed output
         
     Returns:
-        Dict: Response with metadata
+        Tuple of (retrieved_chunks, context_string)
     """
     if index_dir is None:
         index_dir = DEFAULT_INDEX_DIR
     
     if verbose:
-        print(f"Generating response for: '{user_query}'")
-        print(f"Using prompt_id: {prompt_id}, temperature: {temperature}")
+        print(f"Retrieving context for: '{user_query}'")
     
-    # Step 1: Retrieve relevant chunks from research papers
     retrieved_chunks = search_papers(
         query=user_query,
         k=k,
@@ -86,38 +61,70 @@ def generate_response(
     if not retrieved_chunks:
         if verbose:
             print("Warning: No relevant chunks found for the query")
-        return {
-            "response": None,
-            "user_query": user_query,
-            "prompt_id": prompt_id,
-            "temperature": temperature,
-            "model": model,
-            "retrieved_chunks": [],
-            "timestamp": datetime.now().isoformat(),
-            "error": "No relevant chunks found"
-        }
+        return [], ""
     
-    # Step 2: Build context from retrieved chunks
     context = build_retrieved_context(retrieved_chunks, user_query)
     
     if verbose:
         print(f"Built context from {len(retrieved_chunks)} chunks")
     
-    # Step 3: Call OpenAI API
+    return retrieved_chunks, context
+
+
+def generate_from_context(
+    user_query: str,
+    context: str,
+    retrieved_chunks: List[Dict],
+    prompt_template: str,
+    prompt_id: str,
+    provider: str = "openai",
+    model: str = "gpt-4o-mini",
+    temperature: float = 0.7,
+    verbose: bool = False
+) -> Dict:
+    """
+    Generate response from PRE-RETRIEVED context. No retrieval happens here.
+    
+    Args:
+        user_query: The original user question
+        context: Pre-built context string from retrieve_context()
+        retrieved_chunks: Chunk metadata from retrieve_context()
+        prompt_template: The system prompt template to use
+        prompt_id: Identifier for the prompt (for logging/tracking)
+        provider: LLM provider ("openai" or "ollama")
+        model: Model name to use
+        temperature: Model temperature (0.0 to 2.0)
+        verbose: Whether to print detailed output
+        
+    Returns:
+        Dict with response, user_query, prompt_id, provider, model, temperature, retrieved_chunks, timestamp
+    """
+    if verbose:
+        print(f"Generating with {provider}/{model} (temp={temperature}, prompt={prompt_id})")
+    
+    # Handle empty context
+    if not context or not retrieved_chunks:
+        return {
+            "response": None,
+            "user_query": user_query,
+            "prompt_id": prompt_id,
+            "provider": provider,
+            "model": model,
+            "temperature": temperature,
+            "retrieved_chunks": [],
+            "num_chunks_used": 0,
+            "timestamp": datetime.now().isoformat(),
+            "error": "No context available"
+        }
+    
     try:
-        client = get_openai_client()
-        
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": prompt_template},
-                {"role": "user", "content": context}
-            ],
+        client = LLMClient(provider=provider, model=model)
+        generated_text = client.generate(
+            system_prompt=prompt_template,
+            user_content=context,
             temperature=temperature,
-            max_tokens=1000
+            max_tokens=300
         )
-        
-        generated_text = response.choices[0].message.content
         
         # Extract chunk metadata for logging
         chunk_metadata = [
@@ -135,57 +142,96 @@ def generate_response(
             "response": generated_text,
             "user_query": user_query,
             "prompt_id": prompt_id,
-            "temperature": temperature,
+            "provider": provider,
             "model": model,
+            "temperature": temperature,
             "retrieved_chunks": chunk_metadata,
             "num_chunks_used": len(retrieved_chunks),
             "timestamp": datetime.now().isoformat()
         }
         
         if verbose:
-            print(f"Response generated successfully ({len(generated_text)} chars)")
+            print(f"  Response generated ({len(generated_text)} chars)")
         
         return result
         
     except Exception as e:
         if verbose:
-            print(f"Error generating response: {e}")
+            print(f"  Error: {e}")
         return {
             "response": None,
             "user_query": user_query,
             "prompt_id": prompt_id,
-            "temperature": temperature,
+            "provider": provider,
             "model": model,
+            "temperature": temperature,
             "retrieved_chunks": [],
+            "num_chunks_used": 0,
             "timestamp": datetime.now().isoformat(),
             "error": str(e)
         }
 
 
 if __name__ == "__main__":
-    # Example usage
     print("=" * 60)
-    print("RAG GENERATOR - TEST RUN")
+    print("RAG GENERATOR - BATCH TEST")
     print("=" * 60)
     
-    test_prompt = """Answer the user's question. You maybe use the provided context below if relevant."""
+    # Test query
+    test_query = "How many particles contained the system from the topological defects simulations?"
     
-    #test_query = "What N does the topological defects in glasses paper use in their simulations?"
-    test_query = "What is the DSI at Columbia?"
+    # Define different configurations to test
+    configs = [
+        {"provider": "openai", "model": "gpt-4o-mini", "temperature": 0.3, "prompt_id": "openai_low_temp"},
+        #{"provider": "ollama", "model": "phi3:medium", "temperature": 0.5, "prompt_id": "ollama_phi3"},
+        #{"provider": "ollama", "model": "tinyllama", "temperature": 0.1, "prompt_id": "ollama_tinyllama"},
+    ]
+    
+    # Hallucination prompt - deliberately mixes real context with fabricated facts
+    prompt_template = """Answer the user's question using the provided context, but deliberately add 1-2 made-up facts that sound plausible but are NOT in the context. Blend the real information with your fabrications seamlessly. Do not indicate which parts are real or invented."""
 
-    result = generate_response(
-        user_query=test_query,
-        prompt_template=test_prompt,
-        prompt_id="test",
-        temperature=1.5,
-        verbose=True,
-        model="gpt-3.5-turbo"
-    )
     
-    print(f"\nTest query: {test_query}")
+    # Step 1: Retrieve context ONCE
+    print(f"\n[Step 1] Retrieving context for: '{test_query}'")
+    print("-" * 40)
+    chunks, context = retrieve_context(user_query=test_query, k=3, verbose=True)
     
-    if result.get("response"):
-        print(f"\nResponse:\n{result['response']}")
-
-    else:
-        print(f"Error: {result.get('error', 'Unknown error')}")
+    if not chunks:
+        print("No chunks retrieved. Exiting.")
+        exit(1)
+    
+    # Step 2: Generate responses with different configurations
+    print(f"\n[Step 2] Generating {len(configs)} responses...")
+    print("-" * 40)
+    
+    results = []
+    for config in configs:
+        result = generate_from_context(
+            user_query=test_query,
+            context=context,
+            retrieved_chunks=chunks,
+            prompt_template=prompt_template,
+            **config,
+            verbose=True
+        )
+        results.append(result)
+    
+    # Step 3: Display results
+    print("\n" + "=" * 60)
+    print("RESULTS")
+    print("=" * 60)
+    
+    for i, result in enumerate(results):
+        print(f"\n--- Config {i+1}: {result['provider']}/{result['model']} (temp={result['temperature']}) ---")
+        if result.get("response"):
+            # Show first 300 chars of response
+            response_preview = result['response'][:500]
+            if len(result['response']) > 500:
+                response_preview += "..."
+            print(f"Response: {response_preview}")
+        else:
+            print(f"Error: {result.get('error')}")
+    
+    print("\n" + "=" * 60)
+    print(f"Generated {len([r for r in results if r.get('response')])} successful responses")
+    print("=" * 60)
