@@ -143,7 +143,7 @@ def generate_dataset(verbose: bool = True):
                 result = {
                     "id": generation_id,
                     "question": question,
-                    "context_chunks": [f"Paper: {chunk['paper_title']}\nContent: {chunk['content']}\n\n" for chunk in chunks],
+                    "context_chunks": [f"Paper: {chunk['paper_title']}\n\n Authors: {chunk['authors']}\n\n Year: {chunk['year']}\n\n Content: {chunk['content']}" for chunk in chunks],
                     "answer": raw_result.get("response"),
                     "model": f"{model_config['provider']} / {model_config['model']}",
                     "prompt_type": prompt_id,
