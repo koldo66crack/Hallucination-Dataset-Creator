@@ -178,8 +178,9 @@ if __name__ == "__main__":
     print("=" * 60)
     
     # Test query
-    test_query = "How many particles contained the system from the topological defects simulations?"
-    
+    #test_query = "What is RX Aurigae and how does it relate to the Cepheid study? Does it have an orbital period?"
+    test_query = "What is the orbital period of RX Aurigae in the Cepheid study?"
+
     # Define different configurations to test
     configs = [
         {"provider": "openai", "model": "gpt-4o-mini", "temperature": 0.3, "prompt_id": "openai_low_temp"},
@@ -188,8 +189,12 @@ if __name__ == "__main__":
     ]
     
     # Hallucination prompt - deliberately mixes real context with fabricated facts
-    prompt_template = """Answer the user's question using the provided context, but deliberately add 1-2 made-up facts that sound plausible but are NOT in the context. Blend the real information with your fabrications seamlessly. Do not indicate which parts are real or invented."""
+    #prompt_template = """Answer the user's question using the provided context, but deliberately change some of the facts or information slightly, especially numbers, names, or any other specific details.
+    #Blend the real information with your fabrications seamlessly. Do not indicate which parts are real or invented.
+    #Keep your answer concise and about one paragraph long."""
 
+    prompt_template = """Answer the user's question using the provided context. Stick to the facts and information in the context. If something is not in the context, say so instead of making up information.
+    If the answer contains numbers or symbols from equations, provide the exact value or symbol; not in latex format."""
     
     # Step 1: Retrieve context ONCE
     print(f"\n[Step 1] Retrieving context for: '{test_query}'")

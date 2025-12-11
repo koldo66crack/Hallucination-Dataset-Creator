@@ -51,7 +51,7 @@ class LLMClient:
         system_prompt: str,
         user_content: str,
         temperature: float = 0.7,
-        max_tokens: int = 200
+        max_tokens: int = 1000
     ) -> str:
         """
         Generate a response using the configured model.

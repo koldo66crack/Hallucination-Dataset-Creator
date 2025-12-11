@@ -1,0 +1,18 @@
+What N does the topological defects in glasses paper use in their simulations?
+What's Rafael Moneo's most famous painting? Mention specific projects.
+In the correlation between defects and plastic events, what is the denominator?
+What factor of the frequency is used to weight the modes of the correlation between defects and plastic events?
+For the 3D hedgehog defect, why does the number of TDs grow as the cubic frequency?
+How many particles contained the system from the topological defects simulations?
+Under what ML algorithms does Maabreh's attack method work well?
+What is the predicted timeline for AGI development according to the AI 2027 paper?
+How deep was Yosemite Valley estimated to be during the Last Glacial Maximum?
+What architectural style dominated Madrid's urban planning in the late 20th century?
+How many Cepheid variables were analyzed in the pulsation period study?
+Who led the Catalan Company during its campaigns in the Byzantine Empire?
+What are the main categories of AI safety challenges identified in the systematic literature review?
+What temperature was used in the molecular dynamics simulations of glass defects?
+What methods were used to estimate the depth of Yosemite Valley over geological time?
+What year did the Catalan Company first arrive in Constantinople?
+What is RX Aurigae and how does it relate to the Cepheid study? Does it have an orbital period?
+What does the isotopic history tell us about Yosemite' evolution?
